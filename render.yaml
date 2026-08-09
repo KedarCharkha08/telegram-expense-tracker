@@ -1,0 +1,30 @@
+# Render blueprint. Push this repo to GitHub, then in Render:
+#   New + → Blueprint → pick the repo → it reads this file.
+# Secrets are marked sync:false, so Render prompts you to paste them in the
+# dashboard instead of committing them.
+services:
+  - type: web
+    name: expense-bot
+    runtime: python
+    plan: free
+    region: singapore          # closest free region to India
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: ALLOWED_USER_IDS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: CURRENCY
+        value: INR
