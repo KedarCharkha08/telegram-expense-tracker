@@ -5,5 +5,8 @@ supabase>=2.7,<3.0
 python-dotenv>=1.0,<2.0
 pandas>=2.2,<3.0
 streamlit>=1.38,<2.0
-altair>=5.3,<6.0
+# altair 5.x cannot be imported on Python 3.14 — its generated schema uses
+# TypedDict(closed=True), which 3.14's typing.TypedDict rejects. Streamlit
+# Community Cloud runs 3.14, so 6.x is the floor, not a preference.
+altair>=6.2,<7.0
 pytest>=8.0,<9.0
