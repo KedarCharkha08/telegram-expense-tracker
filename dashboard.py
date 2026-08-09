@@ -84,6 +84,24 @@ def money(value: float) -> str:
     return f"{SYMBOL}{value:,.0f}"
 
 
+# Ordered shortest-to-longest so the control reads like a zoom level.
+PERIODS = ["This month", "30 days", "3 months", "This year", "All", "Custom"]
+DEFAULT_PERIOD = "This month"
+
+
+def resolve_period(period: str, today: date, earliest: date) -> tuple[date, date]:
+    """Turn a preset name into an inclusive [start, end] pair."""
+    if period == "This month":
+        return today.replace(day=1), today
+    if period == "30 days":
+        return today - timedelta(days=29), today
+    if period == "3 months":
+        return today - timedelta(days=89), today
+    if period == "This year":
+        return date(today.year, 1, 1), today
+    return earliest, today  # "All"
+
+
 # --------------------------------------------------------------------------- #
 # UI
 # --------------------------------------------------------------------------- #
@@ -97,35 +115,47 @@ def main() -> None:
         st.stop()
 
     today = pd.Timestamp.now(TZ).date()
-    month_start = today.replace(day=1)
+    earliest = data["spent_on"].min()
 
-    with st.sidebar:
-        st.header("Filters")
-        preset = st.radio(
-            "Period",
-            ["This month", "Last 30 days", "This year", "All time", "Custom"],
-            index=0,
+    # --- filters ------------------------------------------------------------
+    # Kept in the main column rather than the sidebar: the sidebar auto-hides
+    # on narrow screens, which made the whole filter set invisible on a phone.
+    period = st.segmented_control(
+        "Period",
+        PERIODS,
+        default=DEFAULT_PERIOD,
+        selection_mode="single",
+        label_visibility="collapsed",
+    ) or DEFAULT_PERIOD
+
+    if period == "Custom":
+        picked = st.date_input(
+            "Pick a range",
+            value=(today.replace(day=1), today),
+            min_value=earliest,
+            max_value=today,
         )
-        if preset == "This month":
-            start, end = month_start, today
-        elif preset == "Last 30 days":
-            start, end = today - timedelta(days=29), today
-        elif preset == "This year":
-            start, end = date(today.year, 1, 1), today
-        elif preset == "All time":
-            start, end = data["spent_on"].min(), today
+        # date_input returns a single date until the second click lands.
+        if isinstance(picked, tuple) and len(picked) == 2:
+            start, end = picked
         else:
-            picked = st.date_input(
-                "Range", value=(month_start, today), max_value=today
-            )
-            start, end = picked if isinstance(picked, tuple) else (picked, picked)
+            st.caption("Pick the end date too.")
+            st.stop()
+    else:
+        start, end = resolve_period(period, today, earliest)
 
-        categories = sorted(data["category"].unique())
-        chosen = st.multiselect("Categories", categories, default=categories)
-
-        if st.button("↻ Refresh"):
-            st.cache_data.clear()
-            st.rerun()
+    all_categories = sorted(data["category"].unique())
+    picked_categories = st.multiselect(
+        "Categories",
+        all_categories,
+        default=[],
+        placeholder=f"All {len(all_categories)} categories",
+        label_visibility="collapsed",
+    )
+    # Empty means "everything", which is what an empty filter box looks like it
+    # should mean. The old version pre-selected all 14 and treated an empty box
+    # as "nothing", which read as a bug.
+    chosen = picked_categories or all_categories
 
     window = data[
         (data["spent_on"] >= start)
@@ -133,12 +163,31 @@ def main() -> None:
         & (data["category"].isin(chosen))
     ]
 
+    days = (end - start).days + 1
+    scope = "all categories" if len(chosen) == len(all_categories) else (
+        f"{len(chosen)} of {len(all_categories)} categories"
+    )
+    summary = (
+        f"{start:%d %b %Y} → {end:%d %b %Y} · {days} day{'s' if days != 1 else ''} · "
+        f"{scope} · {len(window):,} expense{'s' if len(window) != 1 else ''}"
+    )
+    left, right = st.columns([5, 1])
+    left.caption(summary)
+    if right.button("↻ Refresh", width="stretch"):
+        st.cache_data.clear()
+        st.rerun()
+
     if window.empty:
-        st.warning("Nothing in that range.")
+        st.info(
+            f"Nothing recorded between {start:%d %b} and {end:%d %b}"
+            + ("." if len(chosen) == len(all_categories)
+               else f" in {', '.join(chosen)}.")
+            + f"\n\nYour records run from {earliest:%d %b %Y} to "
+            f"{data['spent_on'].max():%d %b %Y}."
+        )
         st.stop()
 
     # --- headline metrics ---------------------------------------------------
-    days = max((end - start).days + 1, 1)
     total = window["amount"].sum()
 
     previous = data[
@@ -146,7 +195,11 @@ def main() -> None:
         & (data["spent_on"] < start)
         & (data["category"].isin(chosen))
     ]["amount"].sum()
-    delta = None if previous == 0 else f"{(total - previous) / previous:+.0%} vs prev"
+    # Spell out what the comparison is against — "vs prev" left people guessing.
+    delta = (
+        None if previous == 0
+        else f"{(total - previous) / previous:+.0%} vs previous {days} days"
+    )
 
     left, mid, right, far = st.columns(4)
     left.metric("Total", money(total), delta, delta_color="inverse")
