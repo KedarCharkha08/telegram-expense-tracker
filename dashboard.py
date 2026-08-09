@@ -10,6 +10,7 @@ Local:  streamlit run dashboard.py
 
 from __future__ import annotations
 
+import hmac
 import os
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
@@ -17,7 +18,11 @@ from zoneinfo import ZoneInfo
 import altair as alt
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 from supabase import create_client
+
+# Local runs read .env; on Streamlit Cloud the values come from st.secrets.
+load_dotenv()
 
 st.set_page_config(page_title="Expenses", page_icon="💸", layout="wide")
 
@@ -52,16 +57,20 @@ def check_password() -> bool:
         return True
 
     st.title("💸 Expenses")
-    with st.form("login"):
+    with st.form("login", clear_on_submit=True):
         attempt = st.text_input("Password", type="password")
-        if st.form_submit_button("Enter"):
-            # Constant-time-ish compare; the value is short and low-value but
-            # there is no reason to leak length via early exit.
-            if len(attempt) == len(expected) and attempt == expected:
-                st.session_state["authed"] = True
-                st.rerun()
-            else:
-                st.error("Nope.")
+        submitted = st.form_submit_button("Enter")
+
+    if submitted:
+        # secrets.compare_digest avoids leaking the answer through timing.
+        if hmac.compare_digest(attempt, expected):
+            st.session_state["authed"] = True
+            st.rerun()
+        st.session_state["failures"] = st.session_state.get("failures", 0) + 1
+
+    # Rendered outside the form so it survives the rerun and is actually seen.
+    if st.session_state.get("failures"):
+        st.error(f"Wrong password ({st.session_state['failures']} failed).")
     return False
 
 
@@ -203,7 +212,7 @@ def main() -> None:
             )
             .properties(height=max(260, 28 * len(by_category)))
         )
-        st.altair_chart(bars, use_container_width=True)
+        st.altair_chart(bars, width="stretch")
 
     with trend_col:
         st.subheader("Daily spend")
@@ -221,6 +230,9 @@ def main() -> None:
                     x1=1, x2=1, y1=1, y2=0,
                 ),
                 interpolate="monotone",
+                # A single day has no area to fill, so mark the points too —
+                # otherwise a one-expense window renders as an empty chart.
+                point={"color": "#4c78a8", "size": 60},
             )
             .encode(
                 x=alt.X("spent_on:T", title=None),
@@ -232,19 +244,19 @@ def main() -> None:
             )
             .properties(height=max(260, 28 * len(by_category)))
         )
-        st.altair_chart(line, use_container_width=True)
+        st.altair_chart(line, width="stretch")
 
     # --- share of wallet ----------------------------------------------------
     st.subheader("Share of spending")
-    share = by_category.assign(pct=lambda f: f["amount"] / f["amount"].sum())
+    share = by_category.assign(pct=lambda f: 100 * f["amount"] / f["amount"].sum())
     st.dataframe(
         share.rename(columns={"category": "Category", "amount": "Spent", "pct": "Share"}),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         column_config={
             "Spent": st.column_config.NumberColumn(format=f"{SYMBOL}%,.0f"),
             "Share": st.column_config.ProgressColumn(
-                format="%.1f%%", min_value=0, max_value=1
+                format="%.1f%%", min_value=0, max_value=100
             ),
         },
     )
@@ -266,7 +278,7 @@ def main() -> None:
     st.dataframe(
         ledger,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         height=420,
         column_config={
             "Amount": st.column_config.NumberColumn(format=f"{SYMBOL}%,.2f"),
