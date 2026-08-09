@@ -22,6 +22,19 @@ Telegram  ──webhook──▶  FastAPI (Render)  ──▶  Supabase (Postgre
 | `set_webhook.py` | register / inspect / delete the webhook |
 | `dashboard.py` | Streamlit UI, **publishable key — read-only** |
 | `schema.sql` | table, indexes, view, RLS policy |
+| `seed_sample.py` | fill the dashboard with 90 days of fake expenses |
+
+## Sample data
+
+```bash
+python seed_sample.py          # ~320 rows across 14 categories, 90 days
+python seed_sample.py --purge  # remove them all
+```
+
+Sample rows carry `tg_user_id = 1`, which no real Telegram account can have.
+The bot's `/today`, `/month`, `/last` and `/undo` all filter by the sender's
+id, so they never see the fake data; the dashboard reads every row, so it
+does. Purging matches on that id and cannot touch anything you logged.
 
 ## Message format
 
