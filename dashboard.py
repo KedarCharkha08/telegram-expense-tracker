@@ -2,15 +2,18 @@
 
 Read-only by design: it authenticates with the *publishable* key, which is
 subject to RLS and has SELECT permission only. The secret key never appears
-here — Streamlit Community Cloud apps are public URLs, and anything in this
-process is one misconfiguration away from being world-readable.
+here — anything in this process is one misconfiguration away from being
+world-readable.
+
+There is no password gate. Access control is whatever Streamlit Cloud's
+sharing setting says (app Settings -> Sharing), so anyone who can open the
+URL sees every expense.
 
 Local:  streamlit run dashboard.py
 """
 
 from __future__ import annotations
 
-import hmac
 import os
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
@@ -38,40 +41,6 @@ def secret(name: str, default: str = "") -> str:
     except Exception:
         pass
     return os.getenv(name, default)
-
-
-# --------------------------------------------------------------------------- #
-# Auth gate — the Streamlit Cloud URL is public
-# --------------------------------------------------------------------------- #
-
-def check_password() -> bool:
-    expected = secret("DASHBOARD_PASSWORD")
-    if not expected:
-        st.error(
-            "DASHBOARD_PASSWORD is not set. Refusing to serve your financial "
-            "data on a public URL without a password."
-        )
-        return False
-
-    if st.session_state.get("authed"):
-        return True
-
-    st.title("💸 Expenses")
-    with st.form("login", clear_on_submit=True):
-        attempt = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Enter")
-
-    if submitted:
-        # secrets.compare_digest avoids leaking the answer through timing.
-        if hmac.compare_digest(attempt, expected):
-            st.session_state["authed"] = True
-            st.rerun()
-        st.session_state["failures"] = st.session_state.get("failures", 0) + 1
-
-    # Rendered outside the form so it survives the rerun and is actually seen.
-    if st.session_state.get("failures"):
-        st.error(f"Wrong password ({st.session_state['failures']} failed).")
-    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -292,5 +261,4 @@ def main() -> None:
     )
 
 
-if check_password():
-    main()
+main()

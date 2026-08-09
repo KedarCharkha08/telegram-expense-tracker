@@ -76,8 +76,8 @@ so a retry is a no-op rather than a duplicate row.
 1. share.streamlit.io → **New app** → this repo → main file `dashboard.py`.
 2. **Settings → Secrets** → paste the contents of
    `.streamlit/secrets.toml.example` with real values.
-3. The app URL is public — that's why `DASHBOARD_PASSWORD` is mandatory and the
-   app refuses to render without it.
+3. The app has no password of its own. Restrict it under **Settings → Sharing**
+   if you don't want the URL to be all it takes to read every expense.
 
 Streamlit Cloud installs from the root `requirements.txt`. It pulls a few
 backend-only packages it doesn't need; harmless, just a slower cold build.
@@ -91,6 +91,8 @@ backend-only packages it doesn't need; harmless, just a slower cold build.
   secret key, which lives only in Render's env.
 - `/undo` soft-deletes (`deleted_at`), so nothing is ever really lost.
 - User text is HTML-escaped before being sent back to Telegram.
+- The dashboard has no auth of its own — Streamlit Cloud's sharing setting is
+  the only thing standing between the URL and your spending history.
 
 ## Tests
 
@@ -98,5 +100,5 @@ backend-only packages it doesn't need; harmless, just a slower cold build.
 .venv/bin/python -m pytest tests -q
 ```
 
-38 tests: parser cases, webhook auth, and handler flow with Supabase and
+40 tests: parser cases, webhook auth, and handler flow with Supabase and
 Telegram stubbed out.
