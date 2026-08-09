@@ -15,7 +15,7 @@ Local:  streamlit run dashboard.py
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import altair as alt
@@ -23,6 +23,14 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from supabase import create_client
+
+from periods import (
+    DEFAULT_PERIOD,
+    PERIODS,
+    coerce_range,
+    custom_bounds,
+    resolve_period,
+)
 
 # Local runs read .env; on Streamlit Cloud the values come from st.secrets.
 load_dotenv()
@@ -84,24 +92,6 @@ def money(value: float) -> str:
     return f"{SYMBOL}{value:,.0f}"
 
 
-# Ordered shortest-to-longest so the control reads like a zoom level.
-PERIODS = ["This month", "30 days", "3 months", "This year", "All", "Custom"]
-DEFAULT_PERIOD = "This month"
-
-
-def resolve_period(period: str, today: date, earliest: date) -> tuple[date, date]:
-    """Turn a preset name into an inclusive [start, end] pair."""
-    if period == "This month":
-        return today.replace(day=1), today
-    if period == "30 days":
-        return today - timedelta(days=29), today
-    if period == "3 months":
-        return today - timedelta(days=89), today
-    if period == "This year":
-        return date(today.year, 1, 1), today
-    return earliest, today  # "All"
-
-
 # --------------------------------------------------------------------------- #
 # UI
 # --------------------------------------------------------------------------- #
@@ -112,6 +102,13 @@ def main() -> None:
     data = load()
     if data.empty:
         st.info("No expenses yet. Message your Telegram bot to log the first one.")
+        # The empty result is cached for 60s like any other. Without a way to
+        # clear it here, the first expense you log appears to vanish — the
+        # page reloads straight back into this branch, which has no Refresh
+        # button of its own because the normal one renders further down.
+        if st.button("↻ Check again"):
+            st.cache_data.clear()
+            st.rerun()
         st.stop()
 
     today = pd.Timestamp.now(TZ).date()
@@ -129,18 +126,14 @@ def main() -> None:
     ) or DEFAULT_PERIOD
 
     if period == "Custom":
+        default_start, floor, ceiling = custom_bounds(today, earliest)
         picked = st.date_input(
             "Pick a range",
-            value=(today.replace(day=1), today),
-            min_value=earliest,
-            max_value=today,
+            value=(default_start, ceiling),
+            min_value=floor,
+            max_value=ceiling,
         )
-        # date_input returns a single date until the second click lands.
-        if isinstance(picked, tuple) and len(picked) == 2:
-            start, end = picked
-        else:
-            st.caption("Pick the end date too.")
-            st.stop()
+        start, end = coerce_range(picked, (default_start, ceiling))
     else:
         start, end = resolve_period(period, today, earliest)
 

@@ -113,5 +113,5 @@ backend-only packages it doesn't need; harmless, just a slower cold build.
 .venv/bin/python -m pytest tests -q
 ```
 
-40 tests: parser cases, webhook auth, and handler flow with Supabase and
+54 tests: parser cases, date-range logic, webhook auth, and handler flow with Supabase and
 Telegram stubbed out.
